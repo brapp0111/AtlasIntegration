@@ -64,7 +64,7 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
         self._source_param = zone_config.get("source_param")
         
         self._zone_name = f"Zone {self._zone_index}"
-        self._volume = 0.5  # 0-1 scale
+        self._volume = 50  # Percentage (0-100)
         self._is_muted = False
         self._source_index = 0
         self._available_sources = []
@@ -79,7 +79,7 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
             self._name_param, "str", self._handle_update
         )
         await self._client.subscribe(
-            self._gain_param, "val", self._handle_update
+            self._gain_param, "pct", self._handle_update
         )
         await self._client.subscribe(
             self._mute_param, "val", self._handle_update
@@ -92,7 +92,7 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
         
         # Get initial values
         await self._client.get(self._name_param, "str")
-        await self._client.get(self._gain_param, "val")
+        await self._client.get(self._gain_param, "pct")
         await self._client.get(self._mute_param, "val")
         
         # Build source list
@@ -106,7 +106,7 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
     async def async_will_remove_from_hass(self) -> None:
         """Run when entity will be removed from hass."""
         await self._client.unsubscribe(self._name_param, "str")
-        await self._client.unsubscribe(self._gain_param, "val")
+        await self._client.unsubscribe(self._gain_param, "pct")
         await self._client.unsubscribe(self._mute_param, "val")
         if self._source_param:
             await self._client.unsubscribe(self._source_param, "val")
@@ -117,9 +117,8 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
             self._zone_name = data.get("str", f"Zone {self._zone_index}")
             
         elif param == self._gain_param:
-            # Convert dB to 0-1 scale (assuming -60 to 0 dB range)
-            db_value = data.get("val", -60)
-            self._volume = max(0, min(1, (db_value + 60) / 60))
+            # Get percentage directly (0-100)
+            self._volume = data.get("pct", 50)
             
         elif param == self._mute_param:
             self._is_muted = bool(data.get("val", 0))
@@ -163,7 +162,8 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
     @property
     def volume_level(self) -> float | None:
         """Return volume level (0..1)."""
-        return self._volume
+        # Convert percentage (0-100) to Home Assistant scale (0-1)
+        return self._volume / 100.0
 
     @property
     def is_volume_muted(self) -> bool:
@@ -184,21 +184,21 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
 
     async def async_set_volume_level(self, volume: float) -> None:
         """Set volume level (0..1)."""
-        # Convert 0-1 scale to dB (-60 to 0)
-        db_value = (volume * 60) - 60
-        await self._client.set(self._gain_param, db_value, "val")
+        # Convert Home Assistant scale (0-1) to percentage (0-100)
+        pct_value = int(volume * 100)
+        await self._client.set(self._gain_param, pct_value, "pct")
 
     async def async_mute_volume(self, mute: bool) -> None:
         """Mute or unmute the zone."""
         await self._client.set(self._mute_param, 1 if mute else 0, "val")
 
     async def async_volume_up(self) -> None:
-        """Increase volume by 1 dB."""
-        await self._client.bump(self._gain_param, 1, "val")
+        """Increase volume by 5%."""
+        await self._client.bump(self._gain_param, 5, "pct")
 
     async def async_volume_down(self) -> None:
-        """Decrease volume by 1 dB."""
-        await self._client.bump(self._gain_param, -1, "val")
+        """Decrease volume by 5%."""
+        await self._client.bump(self._gain_param, -5, "pct")
 
     async def async_select_source(self, source: str) -> None:
         """Select input source."""
