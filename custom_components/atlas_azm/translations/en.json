@@ -1,0 +1,23 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Atlas AZM4/AZM8",
+        "description": "Enter the connection details for your Atlas AZM device.",
+        "data": {
+          "host": "Host IP Address",
+          "name": "Device Name",
+          "tcp_port": "TCP Port (Control)",
+          "udp_port": "UDP Port (Meters)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the device. Please check the IP address and ensure the device is powered on and accessible.",
+      "unknown": "An unexpected error occurred. Please check the logs for more information."
+    },
+    "abort": {
+      "already_configured": "This device is already configured."
+    }
+  }
+}

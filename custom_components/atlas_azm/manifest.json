@@ -1,0 +1,11 @@
+{
+  "domain": "atlas_azm",
+  "name": "Atlas AZM4/AZM8",
+  "codeowners": ["@atlas_azm"],
+  "config_flow": true,
+  "documentation": "https://github.com/yourusername/atlas_azm",
+  "integration_type": "device",
+  "iot_class": "local_push",
+  "requirements": [],
+  "version": "1.0.0"
+}
