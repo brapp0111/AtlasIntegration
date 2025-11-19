@@ -50,6 +50,9 @@ class AtlasAZMClient:
             
             self._connected = True
             
+            # Give device a moment to settle after connection
+            await asyncio.sleep(0.5)
+            
             # Start listening for TCP messages
             self._tcp_listen_task = asyncio.create_task(self._tcp_listen())
             

@@ -1,6 +1,7 @@
 """Number platform for Atlas AZM4/AZM8."""
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from homeassistant.components.number import NumberEntity, NumberMode
@@ -82,13 +83,12 @@ class AtlasGainNumber(NumberEntity):
 
     async def async_added_to_hass(self) -> None:
         """Run when entity about to be added to hass."""
-        # Subscribe to parameters
-        await self._client.subscribe(
-            self._name_param, "str", self._handle_update
-        )
-        await self._client.subscribe(
-            self._gain_param, "val", self._handle_update
-        )
+        # Subscribe to parameters in batch
+        await asyncio.sleep(0.05)  # Rate limit
+        await self._client.subscribe_multiple([
+            {"param": self._name_param, "fmt": "str"},
+            {"param": self._gain_param, "fmt": "val"},
+        ], self._handle_update)
         
         # Get initial values
         await self._client.get(self._name_param, "str")

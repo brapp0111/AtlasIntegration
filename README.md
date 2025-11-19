@@ -10,6 +10,7 @@ A custom Home Assistant integration for controlling Atlas Sound AZM4/AZM8 audio 
 - **Switch Entities**: Quick mute/unmute controls for sources and zones
 - **Real-time Updates**: Automatic push updates via subscriptions (no polling)
 - **Automatic Discovery**: Discovers available sources, zones, and groups
+- **Optimized Communication**: Batch subscriptions and rate limiting to prevent overwhelming the device
 
 ## Installation
 

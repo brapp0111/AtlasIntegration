@@ -1,6 +1,7 @@
 """Media Player platform for Atlas AZM4/AZM8."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -74,34 +75,35 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
 
     async def async_added_to_hass(self) -> None:
         """Run when entity about to be added to hass."""
-        # Subscribe to zone parameters
-        await self._client.subscribe(
-            self._name_param, "str", self._handle_update
-        )
-        await self._client.subscribe(
-            self._gain_param, "pct", self._handle_update
-        )
-        await self._client.subscribe(
-            self._mute_param, "val", self._handle_update
-        )
+        # Build subscription list for batch subscription
+        params_to_subscribe = [
+            {"param": self._name_param, "fmt": "str"},
+            {"param": self._gain_param, "fmt": "pct"},
+            {"param": self._mute_param, "fmt": "val"},
+        ]
         
         if self._source_param:
-            await self._client.subscribe(
-                self._source_param, "val", self._handle_update
-            )
+            params_to_subscribe.append({"param": self._source_param, "fmt": "val"})
         
-        # Get initial values
+        # Subscribe to all zone parameters in one request
+        await self._client.subscribe_multiple(params_to_subscribe, self._handle_update)
+        
+        # Small delay to let subscription process
+        await asyncio.sleep(0.05)
+        
+        # Get initial values (batch get would be better but keep simple for now)
         await self._client.get(self._name_param, "str")
         await self._client.get(self._gain_param, "pct")
         await self._client.get(self._mute_param, "val")
         
-        # Build source list
+        # Build source list - subscribe to source names in batch
+        source_params = []
         for source in self._coordinator.parameters.get("sources", []):
-            source_name_param = source["name_param"]
-            await self._client.subscribe(
-                source_name_param, "str", self._handle_source_name_update
-            )
-            await self._client.get(source_name_param, "str")
+            source_params.append({"param": source["name_param"], "fmt": "str"})
+        
+        if source_params:
+            await asyncio.sleep(0.05)  # Small delay between batches
+            await self._client.subscribe_multiple(source_params, self._handle_source_name_update)
 
     async def async_will_remove_from_hass(self) -> None:
         """Run when entity will be removed from hass."""
