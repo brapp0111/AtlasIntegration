@@ -1,0 +1,8 @@
+{
+  "name": "Atlas AZM4/AZM8",
+  "content_in_root": false,
+  "filename": "atlas_azm",
+  "render_readme": true,
+  "homeassistant": "2023.1.0",
+  "iot_class": "Local Push"
+}
