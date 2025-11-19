@@ -19,9 +19,11 @@ A custom Home Assistant integration for controlling Atlas Sound AZM4/AZM8 audio 
 2. Click on "Integrations"
 3. Click the three dots in the top right corner
 4. Select "Custom repositories"
-5. Add this repository URL and select "Integration" as the category
-6. Click "Install"
-7. Restart Home Assistant
+5. Add `https://github.com/brapp0111/AtlasIntegration` and select "Integration" as the category
+6. Click "Add"
+7. Search for "Atlas AZM4/AZM8" in HACS
+8. Click "Download"
+9. Restart Home Assistant
 
 ### Manual Installation
 
