@@ -6,7 +6,6 @@ A custom Home Assistant integration for controlling Atlas Sound AZM4/AZM8 audio 
 
 - **Media Player Entities**: Control zones as media players with volume, mute, and source selection
 - **Number Entities**: Fine-tune gain levels for sources and zones in dB
-- **Sensor Entities**: Monitor real-time audio levels via UDP
 - **Switch Entities**: Quick mute/unmute controls for sources and zones
 - **Real-time Updates**: Automatic push updates via subscriptions (no polling)
 - **Automatic Discovery**: Discovers available sources, zones, and groups
@@ -42,7 +41,7 @@ A custom Home Assistant integration for controlling Atlas Sound AZM4/AZM8 audio 
    - **Host**: IP address of your AZM4/AZM8 device
    - **Name**: Friendly name for the integration (default: "Atlas AZM")
    - **TCP Port**: Control port (default: 5321)
-   - **UDP Port**: Meter updates port (default: 3131)
+   - **UDP Port**: UDP port (default: 3131)
 5. Click **Submit**
 
 ### Via configuration.yaml (Not Supported)
@@ -97,14 +96,6 @@ data:
   value: -12.5
 ```
 
-### Audio Level Sensors
-
-Monitor real-time audio levels (updated via UDP):
-
-- **Unit**: dBFS (decibels relative to full scale)
-- **Update Rate**: Real-time via UDP push
-- **Available for**: All sources
-
 ### Mute Switches
 
 Quick mute controls:
@@ -117,8 +108,8 @@ Quick mute controls:
 
 This integration implements the Atlas AZM JSON-RPC 2.0 protocol:
 
-- **TCP Port 5321**: Parameter control, subscriptions, and non-meter updates
-- **UDP Port 3131**: Real-time meter updates
+- **TCP Port 5321**: Parameter control, subscriptions, and updates
+- **UDP Port 3131**: Reserved for future use
 - **Keep-alive**: Automatic every 4 minutes to maintain connection
 - **Message Format**: JSON-RPC 2.0 with newline delimiters (`\n`)
 
@@ -137,9 +128,9 @@ This integration implements the Atlas AZM JSON-RPC 2.0 protocol:
 {"jsonrpc":"2.0","method":"set","params":{"param":"ZoneGain_0","val":-20}}\n
 ```
 
-**Subscribe to source meter:**
+**Subscribe to source mute:**
 ```json
-{"jsonrpc":"2.0","method":"sub","params":{"param":"SourceMeter_0","fmt":"val"}}\n
+{"jsonrpc":"2.0","method":"sub","params":{"param":"SourceMute_0","fmt":"val"}}\n
 ```
 
 **Keep-alive:**
@@ -151,7 +142,7 @@ This integration implements the Atlas AZM JSON-RPC 2.0 protocol:
 
 The integration uses the Atlas third-party parameter naming scheme:
 
-- **Sources**: `SourceName_X`, `SourceGain_X`, `SourceMute_X`, `SourceMeter_X`
+- **Sources**: `SourceName_X`, `SourceGain_X`, `SourceMute_X`
 - **Zones**: `ZoneName_X`, `ZoneGain_X`, `ZoneMute_X`, `ZoneSource_X`
 - **Groups**: `GroupName_X`, `GroupActive_X`
 
@@ -162,7 +153,7 @@ Where `X` is the 0-based index.
 ### Connection Issues
 
 1. **Verify network connectivity**: Ensure Home Assistant can reach the AZM device
-2. **Check ports**: Confirm TCP 5321 and UDP 3131 are not blocked by firewall
+2. **Check ports**: Confirm TCP 5321 is not blocked by firewall
 3. **Review logs**: Check Home Assistant logs for connection errors
 
 ### Entity Not Updating
@@ -186,7 +177,7 @@ logger:
 
 ### Services
 
-All standard Home Assistant services for media players, numbers, sensors, and switches are supported.
+All standard Home Assistant services for media players, numbers, and switches are supported.
 
 ### Attributes
 
@@ -194,7 +185,6 @@ Each entity exposes additional attributes:
 
 - Media Players: `source`, `source_list`, `volume_level`, `is_volume_muted`
 - Numbers: `min`, `max`, `step`, `unit_of_measurement`
-- Sensors: `unit_of_measurement`, `state_class`
 
 ## Limitations
 

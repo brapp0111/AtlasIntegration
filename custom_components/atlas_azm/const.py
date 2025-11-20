@@ -19,4 +19,4 @@ ATTR_PARAMETER = "parameter"
 ATTR_VALUE = "value"
 
 # Platforms
-PLATFORMS = ["media_player", "number", "sensor", "switch"]
+PLATFORMS = ["media_player", "number", "switch"]
