@@ -119,14 +119,18 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
             self._zone_name = data.get("str", f"Zone {self._zone_index}")
             
         elif param == self._gain_param:
-            # Get percentage directly (0-100)
-            self._volume = data.get("pct", 50)
+            # Get percentage directly (0-100), ensure it's numeric
+            try:
+                self._volume = float(data.get("pct", 50))
+            except (ValueError, TypeError):
+                self._volume = 50
             
         elif param == self._mute_param:
             self._is_muted = bool(data.get("val", 0))
             
         elif param == self._source_param:
-            self._source_index = data.get("val", 0)
+            # Ensure source index is an integer
+            self._source_index = int(data.get("val", 0))
 
         self.async_write_ha_state()
 
@@ -165,7 +169,11 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
     def volume_level(self) -> float | None:
         """Return volume level (0..1)."""
         # Convert percentage (0-100) to Home Assistant scale (0-1)
-        return self._volume / 100.0
+        try:
+            volume = float(self._volume)
+            return max(0.0, min(1.0, volume / 100.0))
+        except (ValueError, TypeError):
+            return 0.5
 
     @property
     def is_volume_muted(self) -> bool:
@@ -175,8 +183,12 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
     @property
     def source(self) -> str | None:
         """Return the current input source."""
-        if 0 <= self._source_index < len(self._available_sources):
-            return self._available_sources[self._source_index]
+        try:
+            if (isinstance(self._source_index, (int, float)) and 
+                0 <= int(self._source_index) < len(self._available_sources)):
+                return self._available_sources[int(self._source_index)]
+        except (ValueError, IndexError, TypeError):
+            pass
         return None
 
     @property
