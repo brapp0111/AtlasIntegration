@@ -57,7 +57,7 @@ async def async_setup_entry(
 class AtlasMuteSwitch(SwitchEntity):
     """Representation of an Atlas AZM mute control."""
 
-    _attr_has_entity_name = True
+    _attr_has_entity_name = False
 
     def __init__(self, client, coordinator, config, entry, entity_type):
         """Initialize the switch entity."""
@@ -108,7 +108,7 @@ class AtlasMuteSwitch(SwitchEntity):
     @property
     def name(self) -> str:
         """Return the name of the entity."""
-        return f"{self._entity_name} Mute"
+        return self._entity_name
 
     @property
     def is_on(self) -> bool:

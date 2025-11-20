@@ -41,7 +41,7 @@ async def async_setup_entry(
 class AtlasZoneMediaPlayer(MediaPlayerEntity):
     """Representation of an Atlas AZM Zone as a Media Player."""
 
-    _attr_has_entity_name = True
+    _attr_has_entity_name = False
     _attr_supported_features = (
         MediaPlayerEntityFeature.VOLUME_SET
         | MediaPlayerEntityFeature.VOLUME_MUTE
