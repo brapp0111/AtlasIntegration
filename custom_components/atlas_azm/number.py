@@ -56,7 +56,7 @@ async def async_setup_entry(
 class AtlasGainNumber(NumberEntity):
     """Representation of an Atlas AZM gain control as a number entity."""
 
-    _attr_has_entity_name = False
+    _attr_has_entity_name = True
     _attr_mode = NumberMode.SLIDER
     _attr_native_min_value = -60.0
     _attr_native_max_value = 12.0
@@ -112,7 +112,7 @@ class AtlasGainNumber(NumberEntity):
     @property
     def name(self) -> str:
         """Return the name of the entity."""
-        return self._entity_name
+        return f"{self._entity_name} Gain"
 
     @property
     def native_value(self) -> float:
