@@ -99,6 +99,7 @@ class AtlasMuteSwitch(SwitchEntity):
         """Handle parameter updates."""
         if param == self._name_param:
             self._entity_name = data.get("str", f"{self._entity_type.capitalize()} {self._index}")
+            self._attr_name = f"{self._entity_name} Mute"
             
         elif param == self._mute_param:
             self._is_on = bool(data.get("val", 0))
@@ -108,7 +109,7 @@ class AtlasMuteSwitch(SwitchEntity):
     @property
     def name(self) -> str:
         """Return the name of the entity."""
-        return f"{self._entity_name} Mute"
+        return self._attr_name if hasattr(self, '_attr_name') else f"{self._entity_name} Mute"
 
     @property
     def is_on(self) -> bool:
