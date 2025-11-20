@@ -118,6 +118,8 @@ class AtlasAZMClient:
                 
             for param_data in params:
                 param_name = param_data.get("param")
+                _LOGGER.debug("Received message for param: %s, subscribed: %s, data: %s", 
+                             param_name, param_name in self._subscriptions, param_data)
                 if param_name and param_name in self._subscriptions:
                     callback = self._subscriptions[param_name]
                     callback(param_name, param_data)
@@ -212,12 +214,14 @@ class AtlasAZMClient:
         }
         await self._send_tcp(message)
         
+        param_names = []
         for param_data in params:
             param_name = param_data.get("param")
             if param_name:
                 self._subscriptions[param_name] = callback
+                param_names.append(param_name)
         
-        _LOGGER.debug("Subscribed to %d parameters", len(params))
+        _LOGGER.debug("Subscribed to %d parameters: %s", len(params), param_names)
     
     async def unsubscribe(self, param: str, fmt: str = "val"):
         """Unsubscribe from parameter updates."""

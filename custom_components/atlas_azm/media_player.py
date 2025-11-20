@@ -116,7 +116,12 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
     def _handle_update(self, param: str, data: dict):
         """Handle parameter updates."""
         if param == self._name_param:
-            self._zone_name = data.get("str", f"Zone {self._zone_index}")
+            zone_name = data.get("str", "")
+            # Use custom name if provided, otherwise use default
+            if zone_name:
+                self._zone_name = zone_name
+            else:
+                self._zone_name = f"Zone {self._zone_index}"
             
         elif param == self._gain_param:
             # Get percentage directly (0-100), ensure it's numeric
@@ -136,7 +141,7 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
 
     def _handle_source_name_update(self, param: str, data: dict):
         """Handle source name updates."""
-        source_name = data.get("str", "Unknown")
+        source_name = data.get("str", "")
         
         # Extract source index from param name (e.g., "SourceName_3" -> 3)
         try:
@@ -146,7 +151,11 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
             while len(self._available_sources) <= source_index:
                 self._available_sources.append(f"Source {len(self._available_sources)}")
             
-            self._available_sources[source_index] = source_name
+            # Use custom name if provided, otherwise use default
+            if source_name:
+                self._available_sources[source_index] = source_name
+            else:
+                self._available_sources[source_index] = f"Source {source_index}"
             
         except (ValueError, IndexError):
             pass

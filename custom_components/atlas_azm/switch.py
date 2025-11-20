@@ -101,8 +101,15 @@ class AtlasMuteSwitch(SwitchEntity):
     def _handle_update(self, param: str, data: dict):
         """Handle parameter updates."""
         if param == self._name_param:
-            self._entity_name = data.get("str", f"{self._entity_type.capitalize()} {self._index}")
-            self._attr_name = f"{self._entity_name} Mute"
+            new_name = data.get("str", "")
+            # Use custom name if provided, otherwise use default
+            if new_name:
+                self._entity_name = new_name
+                self._attr_name = f"{self._entity_name} Mute"
+            else:
+                # Keep default name
+                self._entity_name = f"{self._entity_type.capitalize()} {self._index}"
+                self._attr_name = f"{self._entity_name} Mute"
             
         elif param == self._mute_param:
             self._is_on = bool(data.get("val", 0))

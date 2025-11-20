@@ -112,10 +112,16 @@ class AtlasGainNumber(NumberEntity):
     def _handle_update(self, param: str, data: dict):
         """Handle parameter updates."""
         if param == self._name_param:
-            new_name = data.get("str", f"{self._entity_type.capitalize()} {self._index}")
-            _LOGGER.debug("Number entity %s received name update: %s", self._attr_unique_id, new_name)
-            self._entity_name = new_name
-            self._attr_name = f"{self._entity_name} Gain"
+            new_name = data.get("str", "")
+            _LOGGER.debug("Number entity %s received name update: '%s'", self._attr_unique_id, new_name)
+            # Use custom name if provided, otherwise use default
+            if new_name:
+                self._entity_name = new_name
+                self._attr_name = f"{self._entity_name} Gain"
+            else:
+                # Keep default name
+                self._entity_name = f"{self._entity_type.capitalize()} {self._index}"
+                self._attr_name = f"{self._entity_name} Gain"
             
         elif param == self._gain_param:
             self._current_value = data.get("val", -60.0)
