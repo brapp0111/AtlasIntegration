@@ -73,6 +73,9 @@ class AtlasMuteSwitch(SwitchEntity):
         
         self._entity_name = f"{entity_type.capitalize()} {self._index}"
         self._is_on = False
+        
+        # Set initial name attribute
+        self._attr_name = f"{self._entity_name} Mute"
 
         # Generate unique ID
         self._attr_unique_id = f"{entry.entry_id}_{entity_type}_{self._index}_mute"
@@ -106,10 +109,7 @@ class AtlasMuteSwitch(SwitchEntity):
 
         self.async_write_ha_state()
 
-    @property
-    def name(self) -> str:
-        """Return the name of the entity."""
-        return self._attr_name if hasattr(self, '_attr_name') else f"{self._entity_name} Mute"
+
 
     @property
     def is_on(self) -> bool:

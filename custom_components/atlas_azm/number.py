@@ -77,6 +77,9 @@ class AtlasGainNumber(NumberEntity):
         
         self._entity_name = f"{entity_type.capitalize()} {self._index}"
         self._current_value = -60.0
+        
+        # Set initial name attribute
+        self._attr_name = f"{self._entity_name} Gain"
 
         # Generate unique ID
         self._attr_unique_id = f"{entry.entry_id}_{entity_type}_{self._index}_gain"
@@ -102,7 +105,9 @@ class AtlasGainNumber(NumberEntity):
     def _handle_update(self, param: str, data: dict):
         """Handle parameter updates."""
         if param == self._name_param:
-            self._entity_name = data.get("str", f"{self._entity_type.capitalize()} {self._index}")
+            new_name = data.get("str", f"{self._entity_type.capitalize()} {self._index}")
+            _LOGGER.debug("Number entity %s received name update: %s", self._attr_unique_id, new_name)
+            self._entity_name = new_name
             self._attr_name = f"{self._entity_name} Gain"
             
         elif param == self._gain_param:
@@ -110,10 +115,7 @@ class AtlasGainNumber(NumberEntity):
 
         self.async_write_ha_state()
 
-    @property
-    def name(self) -> str:
-        """Return the name of the entity."""
-        return self._attr_name if hasattr(self, '_attr_name') else f"{self._entity_name} Gain"
+
 
     @property
     def native_value(self) -> float:
