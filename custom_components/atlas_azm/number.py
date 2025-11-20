@@ -83,19 +83,26 @@ class AtlasGainNumber(NumberEntity):
 
         # Generate unique ID
         self._attr_unique_id = f"{entry.entry_id}_{entity_type}_{self._index}_gain"
+        
+        _LOGGER.debug("Number entity initialized: unique_id=%s, name_param=%s, initial_name=%s", 
+                      self._attr_unique_id, self._name_param, self._attr_name)
 
     async def async_added_to_hass(self) -> None:
         """Run when entity about to be added to hass."""
+        _LOGGER.debug("Number entity %s being added to hass, subscribing to %s and %s", 
+                      self._attr_unique_id, self._name_param, self._gain_param)
         # Subscribe to parameters in batch
         await asyncio.sleep(0.05)  # Rate limit
         await self._client.subscribe_multiple([
             {"param": self._name_param, "fmt": "str"},
             {"param": self._gain_param, "fmt": "val"},
         ], self._handle_update)
+        _LOGGER.debug("Number entity %s subscribed successfully", self._attr_unique_id)
         
         # Get initial values
         await self._client.get(self._name_param, "str")
         await self._client.get(self._gain_param, "val")
+        _LOGGER.debug("Number entity %s requested initial values", self._attr_unique_id)
 
     async def async_will_remove_from_hass(self) -> None:
         """Run when entity will be removed from hass."""
