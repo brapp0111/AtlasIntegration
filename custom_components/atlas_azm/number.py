@@ -107,8 +107,8 @@ class AtlasGainNumber(NumberEntity):
     async def async_will_remove_from_hass(self) -> None:
         """Run when entity will be removed from hass."""
         try:
-            await self._client.unsubscribe(self._name_param, "str")
-            await self._client.unsubscribe(self._gain_param, "val")
+            await self._client.unsubscribe(self._name_param, "str", self._handle_update)
+            await self._client.unsubscribe(self._gain_param, "val", self._handle_update)
         except (ConnectionError, Exception) as err:
             _LOGGER.debug("Error during unsubscribe for %s: %s", self.entity_id, err)
 
@@ -127,7 +127,10 @@ class AtlasGainNumber(NumberEntity):
                 self._attr_name = f"{self._entity_name} Gain"
             
         elif param == self._gain_param:
-            self._current_value = data.get("val", -60.0)
+            new_value = data.get("val", -60.0)
+            _LOGGER.debug("Number entity %s received gain update: val=%s, updating from %s to %s", 
+                         self._attr_unique_id, new_value, self._current_value, new_value)
+            self._current_value = new_value
 
         self.async_write_ha_state()
 

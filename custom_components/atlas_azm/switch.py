@@ -96,8 +96,8 @@ class AtlasMuteSwitch(SwitchEntity):
     async def async_will_remove_from_hass(self) -> None:
         """Run when entity will be removed from hass."""
         try:
-            await self._client.unsubscribe(self._name_param, "str")
-            await self._client.unsubscribe(self._mute_param, "val")
+            await self._client.unsubscribe(self._name_param, "str", self._handle_update)
+            await self._client.unsubscribe(self._mute_param, "val", self._handle_update)
         except (ConnectionError, Exception) as err:
             _LOGGER.debug("Error during unsubscribe for %s: %s", self.entity_id, err)
 

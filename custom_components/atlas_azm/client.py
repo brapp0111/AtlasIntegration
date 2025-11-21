@@ -26,7 +26,7 @@ class AtlasAZMClient:
         self._udp_transport: Optional[asyncio.DatagramTransport] = None
         self._udp_protocol: Optional[asyncio.DatagramProtocol] = None
         
-        self._subscriptions: dict[str, Callable] = {}
+        self._subscriptions: dict[str, list[Callable]] = {}
         self._connected = False
         self._keepalive_task: Optional[asyncio.Task] = None
         self._tcp_listen_task: Optional[asyncio.Task] = None
@@ -121,8 +121,9 @@ class AtlasAZMClient:
                 _LOGGER.debug("Received message for param: %s, subscribed: %s, data: %s", 
                              param_name, param_name in self._subscriptions, param_data)
                 if param_name and param_name in self._subscriptions:
-                    callback = self._subscriptions[param_name]
-                    callback(param_name, param_data)
+                    # Call all callbacks registered for this parameter
+                    for callback in self._subscriptions[param_name]:
+                        callback(param_name, param_data)
                     
         elif method == "error":
             _LOGGER.error("Error from AZM: %s", message)
@@ -207,8 +208,13 @@ class AtlasAZMClient:
             "params": {"param": param, "fmt": fmt}
         }
         await self._send_tcp(message)
-        self._subscriptions[param] = callback
-        _LOGGER.debug("Subscribed to %s", param)
+        
+        # Add callback to the list for this parameter
+        if param not in self._subscriptions:
+            self._subscriptions[param] = []
+        self._subscriptions[param].append(callback)
+        
+        _LOGGER.debug("Subscribed to %s (total callbacks: %d)", param, len(self._subscriptions[param]))
     
     async def subscribe_multiple(self, params: list[dict[str, str]], callback: Callable):
         """Subscribe to multiple parameters at once."""
@@ -223,27 +229,52 @@ class AtlasAZMClient:
         for param_data in params:
             param_name = param_data.get("param")
             if param_name:
-                self._subscriptions[param_name] = callback
+                # Add callback to the list for this parameter
+                if param_name not in self._subscriptions:
+                    self._subscriptions[param_name] = []
+                self._subscriptions[param_name].append(callback)
                 param_names.append(param_name)
         
         _LOGGER.debug("Subscribed to %d parameters: %s", len(params), param_names)
     
-    async def unsubscribe(self, param: str, fmt: str = "val"):
-        """Unsubscribe from parameter updates."""
-        # Always remove from subscriptions dict, even if send fails
-        self._subscriptions.pop(param, None)
+    async def unsubscribe(self, param: str, fmt: str = "val", callback: Optional[Callable] = None):
+        """Unsubscribe from parameter updates.
         
-        try:
-            message = {
-                "jsonrpc": "2.0",
-                "method": "unsub",
-                "params": {"param": param, "fmt": fmt}
-            }
-            await self._send_tcp(message)
-            _LOGGER.debug("Unsubscribed from %s", param)
-        except ConnectionError:
-            # Connection already lost, subscription removal from dict is sufficient
-            _LOGGER.debug("Connection lost during unsubscribe from %s (already removed from subscriptions)", param)
+        If callback is provided, only that callback is removed.
+        If callback is None, all callbacks for the parameter are removed.
+        Only sends unsub message to device when last callback is removed.
+        """
+        if param not in self._subscriptions:
+            return
+            
+        if callback:
+            # Remove specific callback
+            try:
+                self._subscriptions[param].remove(callback)
+                _LOGGER.debug("Removed callback from %s (remaining: %d)", param, len(self._subscriptions[param]))
+            except (ValueError, KeyError):
+                pass
+            
+            # If no more callbacks, clean up
+            if not self._subscriptions[param]:
+                del self._subscriptions[param]
+        else:
+            # Remove all callbacks
+            del self._subscriptions[param]
+        
+        # Only send unsub to device if no more callbacks for this parameter
+        if param not in self._subscriptions:
+            try:
+                message = {
+                    "jsonrpc": "2.0",
+                    "method": "unsub",
+                    "params": {"param": param, "fmt": fmt}
+                }
+                await self._send_tcp(message)
+                _LOGGER.debug("Unsubscribed from %s (sent to device)", param)
+            except ConnectionError:
+                # Connection already lost, subscription removal from dict is sufficient
+                _LOGGER.debug("Connection lost during unsubscribe from %s", param)
     
     @property
     def is_connected(self) -> bool:
