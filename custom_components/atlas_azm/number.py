@@ -71,21 +71,13 @@ class AtlasGainNumber(NumberEntity):
         self._name_param = config["name_param"]
         self._gain_param = config["gain_param"]
         
-        # Zones use percentage (0-100), sources use dB (-60 to 12)
-        if entity_type == "zone":
-            self._attr_native_min_value = 0.0
-            self._attr_native_max_value = 100.0
-            self._attr_native_step = 1.0
-            self._attr_native_unit_of_measurement = "%"
-            self._gain_format = "pct"
-            self._current_value = 50.0
-        else:  # source
-            self._attr_native_min_value = -60.0
-            self._attr_native_max_value = 12.0
-            self._attr_native_step = 0.5
-            self._attr_native_unit_of_measurement = "dB"
-            self._gain_format = "val"
-            self._current_value = -60.0
+        # Both zones and sources use percentage (0-100)
+        self._attr_native_min_value = 0.0
+        self._attr_native_max_value = 100.0
+        self._attr_native_step = 1.0
+        self._attr_native_unit_of_measurement = "%"
+        self._gain_format = "pct"
+        self._current_value = 50.0
         
         self._entity_name = f"{entity_type.capitalize()} {self._index}"
         
@@ -138,11 +130,8 @@ class AtlasGainNumber(NumberEntity):
                 self._attr_name = f"{self._entity_name} Gain"
             
         elif param == self._gain_param:
-            # Get value based on format (pct for zones, val for sources)
-            if self._gain_format == "pct":
-                new_value = data.get("pct", 50.0)
-            else:
-                new_value = data.get("val", -60.0)
+            # Get percentage value
+            new_value = data.get("pct", 50.0)
             
             _LOGGER.debug("Number entity %s received gain update: %s=%s, updating from %s to %s", 
                          self._attr_unique_id, self._gain_format, new_value, self._current_value, new_value)
