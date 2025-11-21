@@ -58,10 +58,6 @@ class AtlasGainNumber(NumberEntity):
 
     _attr_has_entity_name = True
     _attr_mode = NumberMode.SLIDER
-    _attr_native_min_value = -60.0
-    _attr_native_max_value = 12.0
-    _attr_native_step = 0.5
-    _attr_native_unit_of_measurement = "dB"
 
     def __init__(self, client, coordinator, config, entry, entity_type):
         """Initialize the number entity."""
@@ -75,8 +71,23 @@ class AtlasGainNumber(NumberEntity):
         self._name_param = config["name_param"]
         self._gain_param = config["gain_param"]
         
+        # Zones use percentage (0-100), sources use dB (-60 to 12)
+        if entity_type == "zone":
+            self._attr_native_min_value = 0.0
+            self._attr_native_max_value = 100.0
+            self._attr_native_step = 1.0
+            self._attr_native_unit_of_measurement = "%"
+            self._gain_format = "pct"
+            self._current_value = 50.0
+        else:  # source
+            self._attr_native_min_value = -60.0
+            self._attr_native_max_value = 12.0
+            self._attr_native_step = 0.5
+            self._attr_native_unit_of_measurement = "dB"
+            self._gain_format = "val"
+            self._current_value = -60.0
+        
         self._entity_name = f"{entity_type.capitalize()} {self._index}"
-        self._current_value = -60.0
         
         # Set initial name attribute
         self._attr_name = f"{self._entity_name} Gain"
@@ -84,31 +95,31 @@ class AtlasGainNumber(NumberEntity):
         # Generate unique ID
         self._attr_unique_id = f"{entry.entry_id}_{entity_type}_{self._index}_gain"
         
-        _LOGGER.debug("Number entity initialized: unique_id=%s, name_param=%s, initial_name=%s", 
-                      self._attr_unique_id, self._name_param, self._attr_name)
+        _LOGGER.debug("Number entity initialized: unique_id=%s, type=%s, format=%s, name_param=%s, initial_name=%s", 
+                      self._attr_unique_id, entity_type, self._gain_format, self._name_param, self._attr_name)
 
     async def async_added_to_hass(self) -> None:
         """Run when entity about to be added to hass."""
-        _LOGGER.debug("Number entity %s being added to hass, subscribing to %s and %s", 
-                      self._attr_unique_id, self._name_param, self._gain_param)
+        _LOGGER.debug("Number entity %s being added to hass, subscribing to %s (fmt=%s) and %s", 
+                      self._attr_unique_id, self._name_param, self._gain_format, self._gain_param)
         # Subscribe to parameters in batch
         await asyncio.sleep(0.05)  # Rate limit
         await self._client.subscribe_multiple([
             {"param": self._name_param, "fmt": "str"},
-            {"param": self._gain_param, "fmt": "val"},
+            {"param": self._gain_param, "fmt": self._gain_format},
         ], self._handle_update)
         _LOGGER.debug("Number entity %s subscribed successfully", self._attr_unique_id)
         
         # Get initial values
         await self._client.get(self._name_param, "str")
-        await self._client.get(self._gain_param, "val")
+        await self._client.get(self._gain_param, self._gain_format)
         _LOGGER.debug("Number entity %s requested initial values", self._attr_unique_id)
 
     async def async_will_remove_from_hass(self) -> None:
         """Run when entity will be removed from hass."""
         try:
             await self._client.unsubscribe(self._name_param, "str", self._handle_update)
-            await self._client.unsubscribe(self._gain_param, "val", self._handle_update)
+            await self._client.unsubscribe(self._gain_param, self._gain_format, self._handle_update)
         except (ConnectionError, Exception) as err:
             _LOGGER.debug("Error during unsubscribe for %s: %s", self.entity_id, err)
 
@@ -127,9 +138,14 @@ class AtlasGainNumber(NumberEntity):
                 self._attr_name = f"{self._entity_name} Gain"
             
         elif param == self._gain_param:
-            new_value = data.get("val", -60.0)
-            _LOGGER.debug("Number entity %s received gain update: val=%s, updating from %s to %s", 
-                         self._attr_unique_id, new_value, self._current_value, new_value)
+            # Get value based on format (pct for zones, val for sources)
+            if self._gain_format == "pct":
+                new_value = data.get("pct", 50.0)
+            else:
+                new_value = data.get("val", -60.0)
+            
+            _LOGGER.debug("Number entity %s received gain update: %s=%s, updating from %s to %s", 
+                         self._attr_unique_id, self._gain_format, new_value, self._current_value, new_value)
             self._current_value = new_value
 
         self.async_write_ha_state()
@@ -144,7 +160,7 @@ class AtlasGainNumber(NumberEntity):
     async def async_set_native_value(self, value: float) -> None:
         """Set new value."""
         try:
-            await self._client.set(self._gain_param, value, "val")
+            await self._client.set(self._gain_param, value, self._gain_format)
         except ConnectionError as err:
             _LOGGER.error("Failed to set value for %s: %s", self.entity_id, err)
             raise
