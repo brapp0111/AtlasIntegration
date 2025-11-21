@@ -162,10 +162,15 @@ class AtlasAZMClient:
         """Send a message over TCP."""
         if not self._tcp_writer:
             raise ConnectionError("Not connected")
-            
-        json_str = json.dumps(message) + "\n"
-        self._tcp_writer.write(json_str.encode())
-        await self._tcp_writer.drain()
+        
+        try:
+            json_str = json.dumps(message) + "\n"
+            self._tcp_writer.write(json_str.encode())
+            await self._tcp_writer.drain()
+        except (BrokenPipeError, ConnectionResetError, OSError) as err:
+            _LOGGER.error("Connection lost while sending message: %s", err)
+            self._connected = False
+            raise ConnectionError("Connection lost") from err
     
     async def set(self, param: str, value: Any, fmt: str = "val"):
         """Set a parameter value."""
@@ -225,14 +230,20 @@ class AtlasAZMClient:
     
     async def unsubscribe(self, param: str, fmt: str = "val"):
         """Unsubscribe from parameter updates."""
-        message = {
-            "jsonrpc": "2.0",
-            "method": "unsub",
-            "params": {"param": param, "fmt": fmt}
-        }
-        await self._send_tcp(message)
+        # Always remove from subscriptions dict, even if send fails
         self._subscriptions.pop(param, None)
-        _LOGGER.debug("Unsubscribed from %s", param)
+        
+        try:
+            message = {
+                "jsonrpc": "2.0",
+                "method": "unsub",
+                "params": {"param": param, "fmt": fmt}
+            }
+            await self._send_tcp(message)
+            _LOGGER.debug("Unsubscribed from %s", param)
+        except ConnectionError:
+            # Connection already lost, subscription removal from dict is sufficient
+            _LOGGER.debug("Connection lost during unsubscribe from %s (already removed from subscriptions)", param)
     
     @property
     def is_connected(self) -> bool:

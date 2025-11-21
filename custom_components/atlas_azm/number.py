@@ -106,8 +106,11 @@ class AtlasGainNumber(NumberEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         """Run when entity will be removed from hass."""
-        await self._client.unsubscribe(self._name_param, "str")
-        await self._client.unsubscribe(self._gain_param, "val")
+        try:
+            await self._client.unsubscribe(self._name_param, "str")
+            await self._client.unsubscribe(self._gain_param, "val")
+        except (ConnectionError, Exception) as err:
+            _LOGGER.debug("Error during unsubscribe for %s: %s", self.entity_id, err)
 
     def _handle_update(self, param: str, data: dict):
         """Handle parameter updates."""
@@ -137,4 +140,8 @@ class AtlasGainNumber(NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         """Set new value."""
-        await self._client.set(self._gain_param, value, "val")
+        try:
+            await self._client.set(self._gain_param, value, "val")
+        except ConnectionError as err:
+            _LOGGER.error("Failed to set value for %s: %s", self.entity_id, err)
+            raise

@@ -95,8 +95,11 @@ class AtlasMuteSwitch(SwitchEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         """Run when entity will be removed from hass."""
-        await self._client.unsubscribe(self._name_param, "str")
-        await self._client.unsubscribe(self._mute_param, "val")
+        try:
+            await self._client.unsubscribe(self._name_param, "str")
+            await self._client.unsubscribe(self._mute_param, "val")
+        except (ConnectionError, Exception) as err:
+            _LOGGER.debug("Error during unsubscribe for %s: %s", self.entity_id, err)
 
     def _handle_update(self, param: str, data: dict):
         """Handle parameter updates."""
@@ -125,8 +128,16 @@ class AtlasMuteSwitch(SwitchEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on the switch (mute)."""
-        await self._client.set(self._mute_param, 1, "val")
+        try:
+            await self._client.set(self._mute_param, 1, "val")
+        except ConnectionError as err:
+            _LOGGER.error("Failed to turn on %s: %s", self.entity_id, err)
+            raise
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off the switch (unmute)."""
-        await self._client.set(self._mute_param, 0, "val")
+        try:
+            await self._client.set(self._mute_param, 0, "val")
+        except ConnectionError as err:
+            _LOGGER.error("Failed to turn off %s: %s", self.entity_id, err)
+            raise

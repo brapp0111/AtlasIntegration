@@ -107,11 +107,14 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         """Run when entity will be removed from hass."""
-        await self._client.unsubscribe(self._name_param, "str")
-        await self._client.unsubscribe(self._gain_param, "pct")
-        await self._client.unsubscribe(self._mute_param, "val")
-        if self._source_param:
-            await self._client.unsubscribe(self._source_param, "val")
+        try:
+            await self._client.unsubscribe(self._name_param, "str")
+            await self._client.unsubscribe(self._gain_param, "pct")
+            await self._client.unsubscribe(self._mute_param, "val")
+            if self._source_param:
+                await self._client.unsubscribe(self._source_param, "val")
+        except (ConnectionError, Exception) as err:
+            _LOGGER.debug("Error during unsubscribe for %s: %s", self.entity_id, err)
 
     def _handle_update(self, param: str, data: dict):
         """Handle parameter updates."""
@@ -207,28 +210,48 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
 
     async def async_set_volume_level(self, volume: float) -> None:
         """Set volume level (0..1)."""
-        # Convert Home Assistant scale (0-1) to percentage (0-100)
-        pct_value = int(volume * 100)
-        await self._client.set(self._gain_param, pct_value, "pct")
+        try:
+            # Convert Home Assistant scale (0-1) to percentage (0-100)
+            pct_value = int(volume * 100)
+            await self._client.set(self._gain_param, pct_value, "pct")
+        except ConnectionError as err:
+            _LOGGER.error("Failed to set volume for %s: %s", self.entity_id, err)
+            raise
 
     async def async_mute_volume(self, mute: bool) -> None:
         """Mute or unmute the zone."""
-        await self._client.set(self._mute_param, 1 if mute else 0, "val")
+        try:
+            await self._client.set(self._mute_param, 1 if mute else 0, "val")
+        except ConnectionError as err:
+            _LOGGER.error("Failed to mute/unmute %s: %s", self.entity_id, err)
+            raise
 
     async def async_volume_up(self) -> None:
         """Increase volume by 5%."""
-        await self._client.bump(self._gain_param, 5, "pct")
+        try:
+            await self._client.bump(self._gain_param, 5, "pct")
+        except ConnectionError as err:
+            _LOGGER.error("Failed to increase volume for %s: %s", self.entity_id, err)
+            raise
 
     async def async_volume_down(self) -> None:
         """Decrease volume by 5%."""
-        await self._client.bump(self._gain_param, -5, "pct")
+        try:
+            await self._client.bump(self._gain_param, -5, "pct")
+        except ConnectionError as err:
+            _LOGGER.error("Failed to decrease volume for %s: %s", self.entity_id, err)
+            raise
 
     async def async_select_source(self, source: str) -> None:
         """Select input source."""
-        if source in self._available_sources:
-            source_index = self._available_sources.index(source)
-            if self._source_param:
-                await self._client.set(self._source_param, source_index, "val")
+        try:
+            if source in self._available_sources:
+                source_index = self._available_sources.index(source)
+                if self._source_param:
+                    await self._client.set(self._source_param, source_index, "val")
+        except ConnectionError as err:
+            _LOGGER.error("Failed to select source for %s: %s", self.entity_id, err)
+            raise
 
     async def async_turn_on(self) -> None:
         """Turn on (unmute) the zone."""
