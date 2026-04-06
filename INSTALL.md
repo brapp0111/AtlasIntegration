@@ -20,7 +20,6 @@ custom_components/
     ├── manifest.json        # Integration metadata
     ├── media_player.py      # Zone media player entities
     ├── number.py            # Gain control entities
-    ├── sensor.py            # Audio meter sensors
     ├── strings.json         # UI strings
     ├── switch.py            # Mute switch entities
     └── translations/

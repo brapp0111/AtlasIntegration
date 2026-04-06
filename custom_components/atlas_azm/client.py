@@ -142,8 +142,9 @@ class AtlasAZMClient:
                 for param_data in params:
                     param_name = param_data.get("param")
                     if param_name and param_name in self._subscriptions:
-                        callback = self._subscriptions[param_name]
-                        callback(param_name, param_data)
+                        # Mirror TCP behavior: each parameter may have multiple listeners.
+                        for callback in self._subscriptions[param_name]:
+                            callback(param_name, param_data)
                         
         except json.JSONDecodeError as err:
             _LOGGER.error("Failed to decode UDP message: %s", err)

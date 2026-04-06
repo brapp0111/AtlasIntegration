@@ -51,23 +51,6 @@ automation:
           value: -6
 ```
 
-### Audio Level Monitoring
-
-```yaml
-automation:
-  - alias: "High Audio Level Alert"
-    description: "Notify when source level is too high"
-    trigger:
-      - platform: numeric_state
-        entity_id: sensor.atlas_azm_microphone_level
-        above: -3  # -3 dBFS
-    action:
-      - service: notify.mobile_app
-        data:
-          message: "Warning: Microphone audio level is too high!"
-          title: "Audio Alert"
-```
-
 ### Automatic Muting
 
 ```yaml
@@ -228,8 +211,6 @@ entities:
     name: Main Zone Gain
   - entity: switch.atlas_azm_main_zone_mute
     name: Mute Main Zone
-  - entity: sensor.atlas_azm_microphone_level
-    name: Mic Level
   - type: divider
   - entity: media_player.atlas_azm_overflow_zone
     name: Overflow Zone
@@ -241,5 +222,5 @@ entities:
 
 1. **Volume Conversion**: Home Assistant uses 0-1 scale, which the integration converts to -60 to 0 dB
 2. **Gain Precision**: Use number entities for precise dB control instead of media player volume
-3. **Real-time Meters**: Sensor entities update in real-time via UDP for live monitoring
+3. **Real-time Updates**: Media player, number, and switch entities update via subscriptions without polling
 4. **Mute vs Off**: Using `turn_off` on media players mutes them; use switches for explicit mute control

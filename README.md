@@ -109,7 +109,7 @@ Quick mute controls:
 This integration implements the Atlas AZM JSON-RPC 2.0 protocol:
 
 - **TCP Port 5321**: Parameter control, subscriptions, and updates
-- **UDP Port 3131**: Reserved for future use
+- **UDP Port 3131**: Meter subscription updates
 - **Keep-alive**: Automatic every 4 minutes to maintain connection
 - **Message Format**: JSON-RPC 2.0 with newline delimiters (`\n`)
 
