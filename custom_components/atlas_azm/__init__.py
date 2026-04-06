@@ -25,6 +25,7 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[Platform] = [
     Platform.MEDIA_PLAYER,
     Platform.NUMBER,
+    Platform.SENSOR,
     Platform.SWITCH,
 ]
 
@@ -112,6 +113,7 @@ class AtlasAZMCoordinator(DataUpdateCoordinator):
                 "name_param": f"SourceName_{i}",
                 "gain_param": f"SourceGain_{i}",
                 "mute_param": f"SourceMute_{i}",
+                "meter_param": f"SourceMeter_{i}",
             })
         
         # Example: Discover 8 zones (adjust based on device model)
@@ -123,6 +125,7 @@ class AtlasAZMCoordinator(DataUpdateCoordinator):
                 "mute_param": f"ZoneMute_{i}",
                 "source_param": f"ZoneSource_{i}",
                 "active_param": f"ZoneActive_{i}",
+                "meter_param": f"ZoneMeter_{i}",
             })
         
         _LOGGER.info("Discovered %d sources and %d zones", 

@@ -6,6 +6,7 @@ A custom Home Assistant integration for controlling Atlas Sound AZM4/AZM8 audio 
 
 - **Media Player Entities**: Control zones as media players with volume, mute, and source selection
 - **Number Entities**: Fine-tune gain levels for sources and zones in dB
+- **Sensor Entities**: Monitor real-time source meter levels in dBFS
 - **Switch Entities**: Quick mute/unmute controls for sources and zones
 - **Real-time Updates**: Automatic push updates via subscriptions (no polling)
 - **Automatic Discovery**: Discovers available sources, zones, and groups
@@ -104,6 +105,14 @@ Quick mute controls:
 - **Switch Off**: Unmute
 - **Available for**: All sources and zones
 
+### Meter Sensors
+
+Real-time source meter monitoring:
+
+- **Unit**: dBFS
+- **Format**: Protocol `val` updates (typically over UDP)
+- **Available for**: All sources
+
 ## Protocol Details
 
 This integration implements the Atlas AZM JSON-RPC 2.0 protocol:
@@ -142,7 +151,7 @@ This integration implements the Atlas AZM JSON-RPC 2.0 protocol:
 
 The integration uses the Atlas third-party parameter naming scheme:
 
-- **Sources**: `SourceName_X`, `SourceGain_X`, `SourceMute_X`
+- **Sources**: `SourceName_X`, `SourceGain_X`, `SourceMute_X`, `SourceMeter_X`
 - **Zones**: `ZoneName_X`, `ZoneGain_X`, `ZoneMute_X`, `ZoneSource_X`
 - **Groups**: `GroupName_X`, `GroupActive_X`
 
@@ -185,6 +194,7 @@ Each entity exposes additional attributes:
 
 - Media Players: `source`, `source_list`, `volume_level`, `is_volume_muted`
 - Numbers: `min`, `max`, `step`, `unit_of_measurement`
+- Sensors: `native_value`, `native_unit_of_measurement`
 
 ## Limitations
 
