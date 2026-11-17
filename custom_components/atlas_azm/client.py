@@ -6,6 +6,17 @@ from typing import Any, Callable, Optional
 
 _LOGGER = logging.getLogger(__name__)
 
+CONNECT_TIMEOUT = 10
+# AZM drops idle connections after ~5 minutes; ping well inside that
+KEEPALIVE_INTERVAL = 60
+# Declare the link dead if nothing (not even a KeepAlive reply) arrives in this window
+KEEPALIVE_TIMEOUT = 150
+RECONNECT_MIN_DELAY = 5
+RECONNECT_MAX_DELAY = 60
+RESUBSCRIBE_BATCH = 50
+# Batched subscription responses can exceed asyncio's 64 KiB default line limit
+STREAM_LIMIT = 1024 * 1024
+
 
 class AtlasAZMClient:
     """Client for Atlas AZM4/AZM8 JSON-RPC 2.0 protocol."""
@@ -27,73 +38,149 @@ class AtlasAZMClient:
         self._udp_protocol: Optional[asyncio.DatagramProtocol] = None
         
         self._subscriptions: dict[str, list[Callable]] = {}
+        # Format of each subscribed parameter, needed to resubscribe after a reconnect
+        self._subscription_formats: dict[str, str] = {}
         self._connected = False
+        self._closing = False
+        self._last_rx = 0.0
         self._keepalive_task: Optional[asyncio.Task] = None
         self._tcp_listen_task: Optional[asyncio.Task] = None
+        self._reconnect_task: Optional[asyncio.Task] = None
         
     async def connect(self) -> bool:
         """Establish TCP and UDP connections."""
+        self._closing = False
         try:
-            # Connect TCP
-            self._tcp_reader, self._tcp_writer = await asyncio.open_connection(
-                self.host, self.tcp_port
-            )
-            _LOGGER.info("TCP connection established to %s:%s", self.host, self.tcp_port)
-            
-            # Setup UDP
-            loop = asyncio.get_event_loop()
-            self._udp_transport, self._udp_protocol = await loop.create_datagram_endpoint(
-                lambda: AtlasUDPProtocol(self._handle_udp_message),
-                remote_addr=(self.host, self.udp_port)
-            )
-            _LOGGER.info("UDP connection established to %s:%s", self.host, self.udp_port)
-            
-            self._connected = True
-            
-            # Give device a moment to settle after connection
-            await asyncio.sleep(0.5)
-            
-            # Start listening for TCP messages
-            self._tcp_listen_task = asyncio.create_task(self._tcp_listen())
-            
-            # Start keepalive
-            self._keepalive_task = asyncio.create_task(self._keepalive_loop())
-            
+            await self._open()
             return True
-            
         except Exception as err:
             _LOGGER.error("Failed to connect: %s", err)
-            await self.disconnect()
+            await self._close_transports()
             return False
     
-    async def disconnect(self):
-        """Close all connections."""
-        self._connected = False
+    async def _open(self):
+        """Open TCP and UDP and start the listener and keepalive tasks."""
+        # Connect TCP
+        self._tcp_reader, self._tcp_writer = await asyncio.wait_for(
+            asyncio.open_connection(self.host, self.tcp_port, limit=STREAM_LIMIT),
+            timeout=CONNECT_TIMEOUT,
+        )
+        _LOGGER.info("TCP connection established to %s:%s", self.host, self.tcp_port)
         
-        # Cancel tasks
-        if self._keepalive_task:
-            self._keepalive_task.cancel()
-        if self._tcp_listen_task:
-            self._tcp_listen_task.cancel()
+        # Setup UDP
+        loop = asyncio.get_running_loop()
+        self._udp_transport, self._udp_protocol = await loop.create_datagram_endpoint(
+            lambda: AtlasUDPProtocol(self._handle_udp_message),
+            remote_addr=(self.host, self.udp_port)
+        )
+        _LOGGER.info("UDP connection established to %s:%s", self.host, self.udp_port)
+        
+        self._connected = True
+        self._last_rx = loop.time()
+        
+        # Give device a moment to settle after connection
+        await asyncio.sleep(0.5)
+        
+        # Start listening for TCP messages
+        self._tcp_listen_task = asyncio.create_task(self._tcp_listen())
+        
+        # Start keepalive
+        self._keepalive_task = asyncio.create_task(self._keepalive_loop())
+    
+    async def disconnect(self):
+        """Close all connections and stop reconnecting."""
+        self._closing = True
+        if self._reconnect_task:
+            self._reconnect_task.cancel()
+            self._reconnect_task = None
+        await self._close_transports()
+        _LOGGER.info("Disconnected from Atlas AZM")
+    
+    async def _close_transports(self):
+        """Cancel tasks and close sockets without touching subscriptions."""
+        self._connected = False
+        current = asyncio.current_task()
+        
+        # Cancel tasks (but not the one calling us)
+        for task in (self._keepalive_task, self._tcp_listen_task):
+            if task and task is not current:
+                task.cancel()
+        self._keepalive_task = None
+        self._tcp_listen_task = None
             
         # Close TCP
         if self._tcp_writer:
-            self._tcp_writer.close()
-            await self._tcp_writer.wait_closed()
+            writer = self._tcp_writer
+            self._tcp_writer = None
+            self._tcp_reader = None
+            try:
+                writer.close()
+                await asyncio.wait_for(writer.wait_closed(), timeout=5)
+            except Exception as err:
+                _LOGGER.debug("Error closing TCP connection: %s", err)
             
         # Close UDP
         if self._udp_transport:
             self._udp_transport.close()
-            
-        _LOGGER.info("Disconnected from Atlas AZM")
+            self._udp_transport = None
+            self._udp_protocol = None
+    
+    def _connection_lost(self, reason: str):
+        """Mark the connection dead and start reconnecting."""
+        if self._closing:
+            return
+        if self._connected:
+            _LOGGER.warning("Connection to Atlas AZM at %s lost: %s", self.host, reason)
+        self._connected = False
+        if not self._reconnect_task or self._reconnect_task.done():
+            self._reconnect_task = asyncio.create_task(self._reconnect_loop())
+    
+    async def _reconnect_loop(self):
+        """Reconnect with backoff, then restore all subscriptions."""
+        delay = RECONNECT_MIN_DELAY
+        try:
+            while not self._closing:
+                await self._close_transports()
+                await asyncio.sleep(delay)
+                try:
+                    await self._open()
+                    await self._resubscribe()
+                    _LOGGER.info("Reconnected to Atlas AZM at %s", self.host)
+                    return
+                except asyncio.CancelledError:
+                    raise
+                except Exception as err:
+                    _LOGGER.warning(
+                        "Reconnect to Atlas AZM at %s failed: %s (retrying in %ss)",
+                        self.host, err, min(delay * 2, RECONNECT_MAX_DELAY),
+                    )
+                    delay = min(delay * 2, RECONNECT_MAX_DELAY)
+        except asyncio.CancelledError:
+            pass
+    
+    async def _resubscribe(self):
+        """Re-send subscriptions; the AZM drops them when TCP closes."""
+        params = [
+            {"param": param, "fmt": self._subscription_formats.get(param, "val")}
+            for param in self._subscriptions
+        ]
+        for i in range(0, len(params), RESUBSCRIBE_BATCH):
+            await self._send_tcp({
+                "jsonrpc": "2.0",
+                "method": "sub",
+                "params": params[i:i + RESUBSCRIBE_BATCH],
+            })
+        _LOGGER.debug("Resubscribed to %d parameters", len(params))
     
     async def _tcp_listen(self):
         """Listen for TCP messages."""
+        reason = "connection closed by device"
         try:
             while self._connected and self._tcp_reader:
                 data = await self._tcp_reader.readline()
                 if not data:
                     break
+                self._last_rx = asyncio.get_running_loop().time()
                     
                 try:
                     message = json.loads(data.decode().strip())
@@ -102,10 +189,11 @@ class AtlasAZMClient:
                     _LOGGER.error("Failed to decode TCP message: %s", err)
                     
         except asyncio.CancelledError:
-            pass
+            return
         except Exception as err:
             _LOGGER.error("TCP listen error: %s", err)
-            self._connected = False
+            reason = str(err)
+        self._connection_lost(reason)
     
     async def _handle_tcp_message(self, message: dict):
         """Handle incoming TCP message."""
@@ -122,11 +210,19 @@ class AtlasAZMClient:
                              param_name, param_name in self._subscriptions, param_data)
                 if param_name and param_name in self._subscriptions:
                     # Call all callbacks registered for this parameter
-                    for callback in self._subscriptions[param_name]:
-                        callback(param_name, param_data)
+                    for callback in list(self._subscriptions[param_name]):
+                        self._run_callback(callback, param_name, param_data)
                     
         elif method == "error":
             _LOGGER.error("Error from AZM: %s", message)
+    
+    @staticmethod
+    def _run_callback(callback: Callable, param_name: str, param_data: dict):
+        """Run an entity callback; a bad callback must not kill the listener."""
+        try:
+            callback(param_name, param_data)
+        except Exception:
+            _LOGGER.exception("Error in update callback for %s", param_name)
     
     def _handle_udp_message(self, data: bytes):
         """Handle incoming UDP message (meters)."""
@@ -143,22 +239,29 @@ class AtlasAZMClient:
                     param_name = param_data.get("param")
                     if param_name and param_name in self._subscriptions:
                         # Mirror TCP behavior: each parameter may have multiple listeners.
-                        for callback in self._subscriptions[param_name]:
-                            callback(param_name, param_data)
+                        for callback in list(self._subscriptions[param_name]):
+                            self._run_callback(callback, param_name, param_data)
                         
         except json.JSONDecodeError as err:
             _LOGGER.error("Failed to decode UDP message: %s", err)
     
     async def _keepalive_loop(self):
-        """Send periodic keepalive messages."""
+        """Send periodic keepalives and drop the connection if the device goes quiet."""
+        loop = asyncio.get_running_loop()
         try:
             while self._connected:
-                await asyncio.sleep(240)  # 4 minutes
+                await asyncio.sleep(KEEPALIVE_INTERVAL)
+                if loop.time() - self._last_rx > KEEPALIVE_TIMEOUT:
+                    self._connection_lost(
+                        f"no data received for {int(loop.time() - self._last_rx)}s"
+                    )
+                    return
                 await self.get("KeepAlive", "str")
         except asyncio.CancelledError:
             pass
         except Exception as err:
             _LOGGER.error("Keepalive error: %s", err)
+            self._connection_lost(f"keepalive failed: {err}")
     
     async def _send_tcp(self, message: dict):
         """Send a message over TCP."""
@@ -171,7 +274,7 @@ class AtlasAZMClient:
             await self._tcp_writer.drain()
         except (BrokenPipeError, ConnectionResetError, OSError) as err:
             _LOGGER.error("Connection lost while sending message: %s", err)
-            self._connected = False
+            self._connection_lost(str(err))
             raise ConnectionError("Connection lost") from err
     
     async def set(self, param: str, value: Any, fmt: str = "val"):
@@ -208,12 +311,16 @@ class AtlasAZMClient:
             "method": "sub",
             "params": {"param": param, "fmt": fmt}
         }
-        await self._send_tcp(message)
         
         # Add callback to the list for this parameter
         if param not in self._subscriptions:
             self._subscriptions[param] = []
         self._subscriptions[param].append(callback)
+        self._subscription_formats[param] = fmt
+        
+        # While reconnecting, the resubscribe after reconnect covers this
+        if self._connected:
+            await self._send_tcp(message)
         
         _LOGGER.debug("Subscribed to %s (total callbacks: %d)", param, len(self._subscriptions[param]))
     
@@ -224,7 +331,6 @@ class AtlasAZMClient:
             "method": "sub",
             "params": params
         }
-        await self._send_tcp(message)
         
         param_names = []
         for param_data in params:
@@ -234,7 +340,12 @@ class AtlasAZMClient:
                 if param_name not in self._subscriptions:
                     self._subscriptions[param_name] = []
                 self._subscriptions[param_name].append(callback)
+                self._subscription_formats[param_name] = param_data.get("fmt", "val")
                 param_names.append(param_name)
+        
+        # While reconnecting, the resubscribe after reconnect covers this
+        if self._connected:
+            await self._send_tcp(message)
         
         _LOGGER.debug("Subscribed to %d parameters: %s", len(params), param_names)
     
@@ -265,6 +376,9 @@ class AtlasAZMClient:
         
         # Only send unsub to device if no more callbacks for this parameter
         if param not in self._subscriptions:
+            self._subscription_formats.pop(param, None)
+            if not self._connected:
+                return
             try:
                 message = {
                     "jsonrpc": "2.0",

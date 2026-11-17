@@ -14,7 +14,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import DOMAIN, VOLUME_STEP
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -231,17 +231,17 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
             raise
 
     async def async_volume_up(self) -> None:
-        """Increase volume by 5%."""
+        """Increase volume by one step."""
         try:
-            await self._client.bump(self._gain_param, 5, "pct")
+            await self._client.bump(self._gain_param, VOLUME_STEP, "pct")
         except ConnectionError as err:
             _LOGGER.error("Failed to increase volume for %s: %s", self.entity_id, err)
             raise
 
     async def async_volume_down(self) -> None:
-        """Decrease volume by 5%."""
+        """Decrease volume by one step."""
         try:
-            await self._client.bump(self._gain_param, -5, "pct")
+            await self._client.bump(self._gain_param, -VOLUME_STEP, "pct")
         except ConnectionError as err:
             _LOGGER.error("Failed to decrease volume for %s: %s", self.entity_id, err)
             raise

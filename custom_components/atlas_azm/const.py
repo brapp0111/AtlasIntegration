@@ -14,9 +14,12 @@ DEFAULT_NAME = "Atlas AZM"
 # Keep-alive interval (seconds)
 KEEPALIVE_INTERVAL = 240  # 4 minutes (less than 5 minute timeout)
 
+# Volume up/down step (percent)
+VOLUME_STEP = 5
+
 # Attributes
 ATTR_PARAMETER = "parameter"
 ATTR_VALUE = "value"
 
 # Platforms
-PLATFORMS = ["media_player", "number", "sensor", "switch"]
+PLATFORMS = ["button", "media_player", "number", "sensor", "switch"]
