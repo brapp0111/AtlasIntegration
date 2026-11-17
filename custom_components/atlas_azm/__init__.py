@@ -16,7 +16,9 @@ from .const import (
     CONF_TCP_PORT,
     CONF_UDP_PORT,
     DEFAULT_TCP_PORT,
+    DEFAULT_CHANNELS,
     DEFAULT_UDP_PORT,
+    DISCOVERY_MAX_INDEX,
     DOMAIN,
 )
 
@@ -94,45 +96,84 @@ class AtlasAZMCoordinator(DataUpdateCoordinator):
         self.parameters: dict[str, dict] = {}
         
     async def async_discover_parameters(self):
-        """Discover available parameters from the device."""
-        # In a real implementation, you would query the device's message table
-        # For now, we'll define common parameters based on the documentation
-        
-        # Initialize with known parameter structures
-        # These would typically be discovered from the device's message table
-        self.parameters = {
-            "sources": [],
-            "zones": [],
-            "groups": [],
-            "mixes": [],
+        """Discover which sources, zones, mixes and scenes the device has.
+
+        Unused sources/zones/scenes answer with an empty name; missing mixes,
+        zones and scenes answer with an error. Either way they are skipped.
+        """
+        names = {
+            prefix: await self._async_get_names(prefix)
+            for prefix in ("SourceName", "ZoneName", "MixName", "SceneName")
         }
-        
-        # Example: Discover 8 sources (adjust based on device model)
-        for i in range(8):
-            self.parameters["sources"].append({
-                "index": i,
-                "name_param": f"SourceName_{i}",
-                "gain_param": f"SourceGain_{i}",
-                "mute_param": f"SourceMute_{i}",
-                "meter_param": f"SourceMeter_{i}",
-            })
-        
-        # Example: Discover 8 zones (adjust based on device model)
-        for i in range(8):
-            self.parameters["zones"].append({
-                "index": i,
-                "name_param": f"ZoneName_{i}",
-                "gain_param": f"ZoneGain_{i}",
-                "mute_param": f"ZoneMute_{i}",
-                "source_param": f"ZoneSource_{i}",
-                "active_param": f"ZoneActive_{i}",
-                "meter_param": f"ZoneMeter_{i}",
-            })
-        
-        _LOGGER.info("Discovered %d sources and %d zones", 
-                     len(self.parameters["sources"]), 
-                     len(self.parameters["zones"]))
-    
+
+        # Older firmware that ignores request ids: fall back to 8 sources/zones
+        if not names["SourceName"] and not names["ZoneName"]:
+            _LOGGER.warning("Parameter discovery got no replies; assuming 8 sources and 8 zones")
+            names["SourceName"] = {i: "" for i in range(DEFAULT_CHANNELS)}
+            names["ZoneName"] = {i: "" for i in range(DEFAULT_CHANNELS)}
+
+        self.parameters = {
+            "sources": [
+                {
+                    "index": i,
+                    "name": name,
+                    "name_param": f"SourceName_{i}",
+                    "gain_param": f"SourceGain_{i}",
+                    "mute_param": f"SourceMute_{i}",
+                    "meter_param": f"SourceMeter_{i}",
+                }
+                for i, name in names["SourceName"].items()
+            ],
+            "zones": [
+                {
+                    "index": i,
+                    "name": name,
+                    "name_param": f"ZoneName_{i}",
+                    "gain_param": f"ZoneGain_{i}",
+                    "mute_param": f"ZoneMute_{i}",
+                    "source_param": f"ZoneSource_{i}",
+                    "active_param": f"ZoneActive_{i}",
+                    "meter_param": f"ZoneMeter_{i}",
+                }
+                for i, name in names["ZoneName"].items()
+            ],
+            # Mixes can be picked as a zone source, using the mix index
+            "mixes": [
+                {"index": i, "name": name, "name_param": f"MixName_{i}"}
+                for i, name in names["MixName"].items()
+            ],
+            "scenes": [
+                {
+                    "index": i,
+                    "name": name,
+                    "name_param": f"SceneName_{i}",
+                    "recall_param": f"RecallScene_{i}",
+                }
+                for i, name in names["SceneName"].items()
+            ],
+            "groups": [],
+        }
+
+        _LOGGER.info(
+            "Discovered %d sources, %d zones, %d mixes and %d scenes",
+            len(self.parameters["sources"]),
+            len(self.parameters["zones"]),
+            len(self.parameters["mixes"]),
+            len(self.parameters["scenes"]),
+        )
+
+    async def _async_get_names(self, prefix: str) -> dict[int, str]:
+        """Return {index: name} for every configured parameter with this name prefix."""
+        results = await asyncio.gather(
+            *(self.client.get_name(f"{prefix}_{i}") for i in range(DISCOVERY_MAX_INDEX)),
+            return_exceptions=True,
+        )
+        return {
+            i: name
+            for i, name in enumerate(results)
+            if isinstance(name, str) and name
+        }
+
     async def _async_update_data(self):
         """Fetch data from API endpoint.
         

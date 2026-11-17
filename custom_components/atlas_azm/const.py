@@ -14,8 +14,12 @@ DEFAULT_NAME = "Atlas AZM"
 # Keep-alive interval (seconds)
 KEEPALIVE_INTERVAL = 240  # 4 minutes (less than 5 minute timeout)
 
+# Parameter discovery: highest index tried, and fallback count if the device does not answer
+DISCOVERY_MAX_INDEX = 32
+DEFAULT_CHANNELS = 8
+
 # Volume up/down step (percent)
-VOLUME_STEP = 5
+VOLUME_STEP = 1
 
 # Attributes
 ATTR_PARAMETER = "parameter"

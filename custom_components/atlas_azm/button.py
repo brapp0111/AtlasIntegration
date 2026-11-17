@@ -31,6 +31,10 @@ async def async_setup_entry(
         entities.append(AtlasVolumeButton(client, zone, entry, "up"))
         entities.append(AtlasVolumeButton(client, zone, entry, "down"))
 
+    # Create a recall button for each configured scene
+    for scene in coordinator.parameters.get("scenes", []):
+        entities.append(AtlasSceneButton(client, scene, entry))
+
     async_add_entities(entities)
 
 
@@ -81,4 +85,48 @@ class AtlasVolumeButton(ButtonEntity):
             await self._client.bump(self._gain_param, self._step, "pct")
         except ConnectionError as err:
             _LOGGER.error("Failed to change volume for %s: %s", self.entity_id, err)
+            raise
+
+
+class AtlasSceneButton(ButtonEntity):
+    """Button that recalls a scene on the AZM."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:palette"
+
+    def __init__(self, client, scene_config, entry):
+        """Initialize the button."""
+        self._client = client
+        
+        self._index = scene_config["index"]
+        self._name_param = scene_config["name_param"]
+        self._recall_param = scene_config["recall_param"]
+        self._attr_name = f"Scene {scene_config.get('name') or self._index}"
+
+        # Generate unique ID
+        self._attr_unique_id = f"{entry.entry_id}_scene_{self._index}_recall"
+
+    async def async_added_to_hass(self) -> None:
+        """Run when entity about to be added to hass."""
+        await asyncio.sleep(0.05)  # Rate limit
+        await self._client.subscribe(self._name_param, "str", self._handle_update)
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Run when entity will be removed from hass."""
+        try:
+            await self._client.unsubscribe(self._name_param, "str", self._handle_update)
+        except (ConnectionError, Exception) as err:
+            _LOGGER.debug("Error during unsubscribe for %s: %s", self.entity_id, err)
+
+    def _handle_update(self, param: str, data: dict):
+        """Handle scene name updates."""
+        self._attr_name = f"Scene {data.get('str', '') or self._index}"
+        self.async_write_ha_state()
+
+    async def async_press(self) -> None:
+        """Recall the scene (action parameter: any set triggers it)."""
+        try:
+            await self._client.set(self._recall_param, 1, "val")
+        except ConnectionError as err:
+            _LOGGER.error("Failed to recall scene for %s: %s", self.entity_id, err)
             raise

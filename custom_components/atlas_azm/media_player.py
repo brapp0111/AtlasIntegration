@@ -67,8 +67,22 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
         self._zone_name = f"Zone {self._zone_index}"
         self._volume = 50  # Percentage (0-100)
         self._is_muted = False
-        self._source_index = 0
-        self._available_sources = []
+        self._source_index = -1
+        # ZoneSource value -> name; sources and mixes share one index space
+        self._source_names: dict[int, str] = {
+            item["index"]: item.get("name") or f"Source {item['index']}"
+            for item in (
+                coordinator.parameters.get("sources", [])
+                + coordinator.parameters.get("mixes", [])
+            )
+        }
+        self._source_name_params = [
+            item["name_param"]
+            for item in (
+                coordinator.parameters.get("sources", [])
+                + coordinator.parameters.get("mixes", [])
+            )
+        ]
 
         # Generate unique ID
         self._attr_unique_id = f"{entry.entry_id}_zone_{self._zone_index}"
@@ -95,11 +109,13 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
         await self._client.get(self._name_param, "str")
         await self._client.get(self._gain_param, "pct")
         await self._client.get(self._mute_param, "val")
+        if self._source_param:
+            await self._client.get(self._source_param, "val")
         
-        # Build source list - subscribe to source names in batch
-        source_params = []
-        for source in self._coordinator.parameters.get("sources", []):
-            source_params.append({"param": source["name_param"], "fmt": "str"})
+        # Keep the source list current - subscribe to source and mix names in batch
+        source_params = [
+            {"param": param, "fmt": "str"} for param in self._source_name_params
+        ]
         
         if source_params:
             await asyncio.sleep(0.05)  # Small delay between batches
@@ -114,9 +130,9 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
             if self._source_param:
                 await self._client.unsubscribe(self._source_param, "val", self._handle_update)
             
-            # Unsubscribe from source names
-            for source in self._coordinator.parameters.get("sources", []):
-                await self._client.unsubscribe(source["name_param"], "str", self._handle_source_name_update)
+            # Unsubscribe from source and mix names
+            for param in self._source_name_params:
+                await self._client.unsubscribe(param, "str", self._handle_source_name_update)
         except (ConnectionError, Exception) as err:
             _LOGGER.debug("Error during unsubscribe for %s: %s", self.entity_id, err)
 
@@ -141,31 +157,22 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
             self._is_muted = bool(data.get("val", 0))
             
         elif param == self._source_param:
-            # Ensure source index is an integer
-            self._source_index = int(data.get("val", 0))
+            # Ensure source index is an integer (-1 = no source)
+            try:
+                self._source_index = int(data.get("val", -1))
+            except (ValueError, TypeError):
+                self._source_index = -1
 
         self.async_write_ha_state()
 
     def _handle_source_name_update(self, param: str, data: dict):
-        """Handle source name updates."""
-        source_name = data.get("str", "")
-        
-        # Extract source index from param name (e.g., "SourceName_3" -> 3)
+        """Handle source and mix name updates."""
+        # Extract index from param name (e.g., "SourceName_3" -> 3, "MixName_14" -> 14)
         try:
-            source_index = int(param.split("_")[-1])
-            
-            # Update or append to available sources
-            while len(self._available_sources) <= source_index:
-                self._available_sources.append(f"Source {len(self._available_sources)}")
-            
-            # Use custom name if provided, otherwise use default
-            if source_name:
-                self._available_sources[source_index] = source_name
-            else:
-                self._available_sources[source_index] = f"Source {source_index}"
-            
-        except (ValueError, IndexError):
-            pass
+            index = int(param.split("_")[-1])
+        except ValueError:
+            return
+        self._source_names[index] = data.get("str", "") or f"Source {index}"
             
         self.async_write_ha_state()
 
@@ -199,18 +206,12 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
     @property
     def source(self) -> str | None:
         """Return the current input source."""
-        try:
-            if (isinstance(self._source_index, (int, float)) and 
-                0 <= int(self._source_index) < len(self._available_sources)):
-                return self._available_sources[int(self._source_index)]
-        except (ValueError, IndexError, TypeError):
-            pass
-        return None
+        return self._source_names.get(self._source_index)
 
     @property
     def source_list(self) -> list[str]:
         """Return the list of available input sources."""
-        return self._available_sources
+        return [self._source_names[index] for index in sorted(self._source_names)]
 
     async def async_set_volume_level(self, volume: float) -> None:
         """Set volume level (0..1)."""
@@ -249,10 +250,10 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
     async def async_select_source(self, source: str) -> None:
         """Select input source."""
         try:
-            if source in self._available_sources:
-                source_index = self._available_sources.index(source)
-                if self._source_param:
+            for source_index, name in self._source_names.items():
+                if name == source and self._source_param:
                     await self._client.set(self._source_param, source_index, "val")
+                    break
         except ConnectionError as err:
             _LOGGER.error("Failed to select source for %s: %s", self.entity_id, err)
             raise

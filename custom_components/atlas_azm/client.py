@@ -46,6 +46,9 @@ class AtlasAZMClient:
         self._keepalive_task: Optional[asyncio.Task] = None
         self._tcp_listen_task: Optional[asyncio.Task] = None
         self._reconnect_task: Optional[asyncio.Task] = None
+        # Requests sent with an "id", waiting for their result/error reply
+        self._pending: dict[int, asyncio.Future] = {}
+        self._next_id = 1
         
     async def connect(self) -> bool:
         """Establish TCP and UDP connections."""
@@ -107,6 +110,12 @@ class AtlasAZMClient:
                 task.cancel()
         self._keepalive_task = None
         self._tcp_listen_task = None
+        
+        # Fail any requests still waiting on a reply
+        for future in self._pending.values():
+            if not future.done():
+                future.set_exception(ConnectionError("Connection closed"))
+        self._pending.clear()
             
         # Close TCP
         if self._tcp_writer:
@@ -197,6 +206,13 @@ class AtlasAZMClient:
     
     async def _handle_tcp_message(self, message: dict):
         """Handle incoming TCP message."""
+        # Reply to a request sent with an "id"
+        if "id" in message and ("result" in message or "error" in message):
+            future = self._pending.pop(message["id"], None)
+            if future and not future.done():
+                future.set_result(message)
+            return
+        
         method = message.get("method")
         
         if method in ("update", "getResp"):
@@ -303,6 +319,31 @@ class AtlasAZMClient:
             "params": {"param": param, "fmt": fmt}
         }
         await self._send_tcp(message)
+    
+    async def request(self, method: str, params: Any, timeout: float = 5) -> dict:
+        """Send a message with an "id" and return the device's result/error reply."""
+        request_id = self._next_id
+        self._next_id += 1
+        future = asyncio.get_running_loop().create_future()
+        self._pending[request_id] = future
+        try:
+            await self._send_tcp({
+                "jsonrpc": "2.0",
+                "method": method,
+                "params": params,
+                "id": request_id,
+            })
+            return await asyncio.wait_for(future, timeout)
+        finally:
+            self._pending.pop(request_id, None)
+    
+    async def get_name(self, param: str) -> Optional[str]:
+        """Return a name parameter's value, or None if the device has no such parameter."""
+        reply = await self.request("get", {"param": param, "fmt": "str"})
+        result = reply.get("result")
+        if not isinstance(result, list) or not result:
+            return None
+        return result[0].get("str", "")
     
     async def subscribe(self, param: str, fmt: str, callback: Callable):
         """Subscribe to parameter updates."""
