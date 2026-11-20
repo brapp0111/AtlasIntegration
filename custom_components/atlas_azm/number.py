@@ -38,17 +38,15 @@ async def async_setup_entry(
             )
         )
 
-    # Create gain controls for zones
-    for zone in coordinator.parameters.get("zones", []):
-        entities.append(
-            AtlasGainNumber(
-                client, 
-                coordinator, 
-                zone, 
-                entry, 
-                "zone"
-            )
-        )
+    # Create gain controls for zones, groups, mixes and each source within a mix
+    for entity_type, key in (
+        ("zone", "zones"),
+        ("group", "groups"),
+        ("mix", "mixes"),
+        ("mix_source", "mix_sources"),
+    ):
+        for config in coordinator.parameters.get(key, []):
+            entities.append(AtlasGainNumber(client, coordinator, config, entry, entity_type))
 
     async_add_entities(entities)
 
@@ -79,10 +77,13 @@ class AtlasGainNumber(NumberEntity):
         self._gain_format = "pct"
         self._current_value = 50.0
         
-        self._entity_name = f"{entity_type.capitalize()} {self._index}"
+        self._default_name = config.get("default_name") or f"{entity_type.capitalize()} {self._index}"
+        # Extra name part, e.g. the source within a mix
+        self._label = f" {config['label']}" if config.get("label") else ""
+        self._entity_name = self._default_name
         
         # Set initial name attribute
-        self._attr_name = f"{self._entity_name} Gain"
+        self._attr_name = f"{self._entity_name}{self._label} Gain"
 
         # Generate unique ID
         self._attr_unique_id = f"{entry.entry_id}_{entity_type}_{self._index}_gain"
@@ -121,13 +122,8 @@ class AtlasGainNumber(NumberEntity):
             new_name = data.get("str", "")
             _LOGGER.debug("Number entity %s received name update: '%s'", self._attr_unique_id, new_name)
             # Use custom name if provided, otherwise use default
-            if new_name:
-                self._entity_name = new_name
-                self._attr_name = f"{self._entity_name} Gain"
-            else:
-                # Keep default name
-                self._entity_name = f"{self._entity_type.capitalize()} {self._index}"
-                self._attr_name = f"{self._entity_name} Gain"
+            self._entity_name = new_name or self._default_name
+            self._attr_name = f"{self._entity_name}{self._label} Gain"
             
         elif param == self._gain_param:
             # Get percentage value

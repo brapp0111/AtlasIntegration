@@ -26,10 +26,11 @@ async def async_setup_entry(
 
     entities = []
 
-    # Create volume up/down buttons for each zone
-    for zone in coordinator.parameters.get("zones", []):
-        entities.append(AtlasVolumeButton(client, zone, entry, "up"))
-        entities.append(AtlasVolumeButton(client, zone, entry, "down"))
+    # Create volume up/down buttons for each zone and group
+    for entity_type, key in (("zone", "zones"), ("group", "groups")):
+        for config in coordinator.parameters.get(key, []):
+            entities.append(AtlasVolumeButton(client, config, entry, "up", entity_type))
+            entities.append(AtlasVolumeButton(client, config, entry, "down", entity_type))
 
     # Create a recall button for each configured scene
     for scene in coordinator.parameters.get("scenes", []):
@@ -39,11 +40,11 @@ async def async_setup_entry(
 
 
 class AtlasVolumeButton(ButtonEntity):
-    """Button that bumps a zone's gain up or down by a fixed step."""
+    """Button that bumps a zone's or group's gain up or down by a fixed step."""
 
     _attr_has_entity_name = True
 
-    def __init__(self, client, zone_config, entry, direction):
+    def __init__(self, client, zone_config, entry, direction, entity_type="zone"):
         """Initialize the button."""
         self._client = client
         self._direction = direction
@@ -55,10 +56,11 @@ class AtlasVolumeButton(ButtonEntity):
         
         self._attr_icon = "mdi:volume-plus" if direction == "up" else "mdi:volume-minus"
         self._label = "Volume Up" if direction == "up" else "Volume Down"
-        self._attr_name = f"Zone {self._index} {self._label}"
+        self._default_name = f"{entity_type.capitalize()} {self._index}"
+        self._attr_name = f"{self._default_name} {self._label}"
 
         # Generate unique ID
-        self._attr_unique_id = f"{entry.entry_id}_zone_{self._index}_volume_{direction}"
+        self._attr_unique_id = f"{entry.entry_id}_{entity_type}_{self._index}_volume_{direction}"
 
     async def async_added_to_hass(self) -> None:
         """Run when entity about to be added to hass."""
@@ -74,13 +76,13 @@ class AtlasVolumeButton(ButtonEntity):
             _LOGGER.debug("Error during unsubscribe for %s: %s", self.entity_id, err)
 
     def _handle_update(self, param: str, data: dict):
-        """Handle zone name updates."""
-        zone_name = data.get("str", "") or f"Zone {self._index}"
+        """Handle zone or group name updates."""
+        zone_name = data.get("str", "") or self._default_name
         self._attr_name = f"{zone_name} {self._label}"
         self.async_write_ha_state()
 
     async def async_press(self) -> None:
-        """Bump the zone gain."""
+        """Bump the zone or group gain."""
         try:
             await self._client.bump(self._gain_param, self._step, "pct")
         except ConnectionError as err:

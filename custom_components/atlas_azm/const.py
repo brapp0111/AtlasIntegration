@@ -17,6 +17,8 @@ KEEPALIVE_INTERVAL = 240  # 4 minutes (less than 5 minute timeout)
 # Parameter discovery: highest index tried, and fallback count if the device does not answer
 DISCOVERY_MAX_INDEX = 32
 DEFAULT_CHANNELS = 8
+# Name the AZM reports for group slots that were never set up
+UNUSED_GROUP_NAME = "New Room Combine"
 
 # Volume up/down step (percent)
 VOLUME_STEP = 1

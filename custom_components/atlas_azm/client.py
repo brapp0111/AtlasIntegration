@@ -70,13 +70,15 @@ class AtlasAZMClient:
         )
         _LOGGER.info("TCP connection established to %s:%s", self.host, self.tcp_port)
         
-        # Setup UDP
+        # Setup UDP: the AZM sends meter updates to this host's UDP port 3131
+        # (not to a source port we pick), so listen on that port.
         loop = asyncio.get_running_loop()
         self._udp_transport, self._udp_protocol = await loop.create_datagram_endpoint(
             lambda: AtlasUDPProtocol(self._handle_udp_message),
-            remote_addr=(self.host, self.udp_port)
+            local_addr=("0.0.0.0", self.udp_port),
+            reuse_port=True,
         )
-        _LOGGER.info("UDP connection established to %s:%s", self.host, self.udp_port)
+        _LOGGER.info("UDP listening on port %s for meter updates", self.udp_port)
         
         self._connected = True
         self._last_rx = loop.time()

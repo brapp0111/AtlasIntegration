@@ -31,16 +31,17 @@ async def async_setup_entry(
         if source.get("meter_param"):
             entities.append(AtlasMeterSensor(client, source, entry, "source"))
 
-    # Create meter sensors for zones.
-    for zone in coordinator.parameters.get("zones", []):
-        if zone.get("meter_param"):
-            entities.append(AtlasMeterSensor(client, zone, entry, "zone"))
+    # Create meter sensors for zones, groups and mixes.
+    for entity_type, key in (("zone", "zones"), ("group", "groups"), ("mix", "mixes")):
+        for config in coordinator.parameters.get(key, []):
+            if config.get("meter_param"):
+                entities.append(AtlasMeterSensor(client, config, entry, entity_type))
 
     async_add_entities(entities)
 
 
 class AtlasMeterSensor(SensorEntity):
-    """Representation of an Atlas AZM source or zone meter sensor."""
+    """Representation of an Atlas AZM source, zone, group or mix meter sensor."""
 
     _attr_has_entity_name = True
     _attr_state_class = SensorStateClass.MEASUREMENT

@@ -39,15 +39,21 @@ async def async_setup_entry(
             )
         )
 
-    # Create mute switches for zones
-    for zone in coordinator.parameters.get("zones", []):
+    # Create mute switches for zones, groups, mixes and each source within a mix
+    for entity_type, key in (
+        ("zone", "zones"),
+        ("group", "groups"),
+        ("mix", "mixes"),
+        ("mix_source", "mix_sources"),
+    ):
+        for config in coordinator.parameters.get(key, []):
+            entities.append(AtlasMuteSwitch(client, coordinator, config, entry, entity_type))
+
+    # Create combine switches for groups (GroupActive combines/uncombines its zones)
+    for group in coordinator.parameters.get("groups", []):
         entities.append(
             AtlasMuteSwitch(
-                client,
-                coordinator,
-                zone,
-                entry,
-                "zone"
+                client, coordinator, group, entry, "group", "active_param", "Combine"
             )
         )
 
@@ -55,11 +61,14 @@ async def async_setup_entry(
 
 
 class AtlasMuteSwitch(SwitchEntity):
-    """Representation of an Atlas AZM mute control."""
+    """Representation of an Atlas AZM on/off control (mute, or group combine)."""
 
     _attr_has_entity_name = True
 
-    def __init__(self, client, coordinator, config, entry, entity_type):
+    def __init__(
+        self, client, coordinator, config, entry, entity_type,
+        param_key="mute_param", suffix="Mute",
+    ):
         """Initialize the switch entity."""
         self._client = client
         self._coordinator = coordinator
@@ -69,16 +78,20 @@ class AtlasMuteSwitch(SwitchEntity):
         
         self._index = config["index"]
         self._name_param = config["name_param"]
-        self._mute_param = config["mute_param"]
+        self._mute_param = config[param_key]
+        self._suffix = suffix
         
-        self._entity_name = f"{entity_type.capitalize()} {self._index}"
+        self._default_name = config.get("default_name") or f"{entity_type.capitalize()} {self._index}"
+        # Extra name part, e.g. the source within a mix
+        self._label = f" {config['label']}" if config.get("label") else ""
+        self._entity_name = self._default_name
         self._is_on = False
         
         # Set initial name attribute
-        self._attr_name = f"{self._entity_name} Mute"
+        self._attr_name = f"{self._entity_name}{self._label} {suffix}"
 
         # Generate unique ID
-        self._attr_unique_id = f"{entry.entry_id}_{entity_type}_{self._index}_mute"
+        self._attr_unique_id = f"{entry.entry_id}_{entity_type}_{self._index}_{suffix.lower()}"
 
     async def async_added_to_hass(self) -> None:
         """Run when entity about to be added to hass."""
@@ -106,13 +119,8 @@ class AtlasMuteSwitch(SwitchEntity):
         if param == self._name_param:
             new_name = data.get("str", "")
             # Use custom name if provided, otherwise use default
-            if new_name:
-                self._entity_name = new_name
-                self._attr_name = f"{self._entity_name} Mute"
-            else:
-                # Keep default name
-                self._entity_name = f"{self._entity_type.capitalize()} {self._index}"
-                self._attr_name = f"{self._entity_name} Mute"
+            self._entity_name = new_name or self._default_name
+            self._attr_name = f"{self._entity_name}{self._label} {self._suffix}"
             
         elif param == self._mute_param:
             self._is_on = bool(data.get("val", 0))
@@ -123,11 +131,11 @@ class AtlasMuteSwitch(SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        """Return true if the switch is on (muted)."""
+        """Return true if the switch is on (muted, or group combined)."""
         return self._is_on
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn on the switch (mute)."""
+        """Turn on the switch (mute, or combine)."""
         try:
             await self._client.set(self._mute_param, 1, "val")
         except ConnectionError as err:
@@ -135,7 +143,7 @@ class AtlasMuteSwitch(SwitchEntity):
             raise
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn off the switch (unmute)."""
+        """Turn off the switch (unmute, or uncombine)."""
         try:
             await self._client.set(self._mute_param, 0, "val")
         except ConnectionError as err:

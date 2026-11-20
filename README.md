@@ -4,7 +4,9 @@ A custom Home Assistant integration for controlling Atlas Sound AZM4/AZM8 audio 
 
 ## Features
 
-- **Media Player Entities**: Control zones as media players with volume, mute, and source selection
+- **Media Player Entities**: Control zones and groups as media players with volume, mute, and source selection
+- **Groups**: Combine/uncombine switch (`GroupActive`), plus gain, mute and meter
+- **Mixes**: Mix gain, mute and meter, plus gain and mute for every source within each mix
 - **Number Entities**: Fine-tune gain levels for sources and zones in dB
 - **Sensor Entities**: Monitor real-time source meter levels in dBFS
 - **Switch Entities**: Quick mute/unmute controls for sources and zones

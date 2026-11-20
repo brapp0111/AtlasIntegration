@@ -31,15 +31,17 @@ async def async_setup_entry(
 
     entities = []
 
-    # Create media player for each zone
+    # Create media player for each zone and group
     for zone in coordinator.parameters.get("zones", []):
         entities.append(AtlasZoneMediaPlayer(client, coordinator, zone, entry))
+    for group in coordinator.parameters.get("groups", []):
+        entities.append(AtlasZoneMediaPlayer(client, coordinator, group, entry, "group"))
 
     async_add_entities(entities)
 
 
 class AtlasZoneMediaPlayer(MediaPlayerEntity):
-    """Representation of an Atlas AZM Zone as a Media Player."""
+    """Representation of an Atlas AZM Zone or Group as a Media Player."""
 
     _attr_has_entity_name = True
     _attr_supported_features = (
@@ -51,7 +53,7 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
         | MediaPlayerEntityFeature.TURN_OFF
     )
 
-    def __init__(self, client, coordinator, zone_config, entry):
+    def __init__(self, client, coordinator, zone_config, entry, entity_type="zone"):
         """Initialize the media player."""
         self._client = client
         self._coordinator = coordinator
@@ -64,7 +66,8 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
         self._mute_param = zone_config["mute_param"]
         self._source_param = zone_config.get("source_param")
         
-        self._zone_name = f"Zone {self._zone_index}"
+        self._default_name = f"{entity_type.capitalize()} {self._zone_index}"
+        self._zone_name = self._default_name
         self._volume = 50  # Percentage (0-100)
         self._is_muted = False
         self._source_index = -1
@@ -85,7 +88,7 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
         ]
 
         # Generate unique ID
-        self._attr_unique_id = f"{entry.entry_id}_zone_{self._zone_index}"
+        self._attr_unique_id = f"{entry.entry_id}_{entity_type}_{self._zone_index}"
 
     async def async_added_to_hass(self) -> None:
         """Run when entity about to be added to hass."""
@@ -141,10 +144,7 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
         if param == self._name_param:
             zone_name = data.get("str", "")
             # Use custom name if provided, otherwise use default
-            if zone_name:
-                self._zone_name = zone_name
-            else:
-                self._zone_name = f"Zone {self._zone_index}"
+            self._zone_name = zone_name or self._default_name
             
         elif param == self._gain_param:
             # Get percentage directly (0-100), ensure it's numeric
@@ -224,7 +224,7 @@ class AtlasZoneMediaPlayer(MediaPlayerEntity):
             raise
 
     async def async_mute_volume(self, mute: bool) -> None:
-        """Mute or unmute the zone."""
+        """Mute or unmute the zone or group."""
         try:
             await self._client.set(self._mute_param, 1 if mute else 0, "val")
         except ConnectionError as err:

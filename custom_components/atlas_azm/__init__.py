@@ -20,6 +20,7 @@ from .const import (
     DEFAULT_UDP_PORT,
     DISCOVERY_MAX_INDEX,
     DOMAIN,
+    UNUSED_GROUP_NAME,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -96,14 +97,14 @@ class AtlasAZMCoordinator(DataUpdateCoordinator):
         self.parameters: dict[str, dict] = {}
         
     async def async_discover_parameters(self):
-        """Discover which sources, zones, mixes and scenes the device has.
+        """Discover which sources, zones, groups, mixes and scenes the device has.
 
         Unused sources/zones/scenes answer with an empty name; missing mixes,
         zones and scenes answer with an error. Either way they are skipped.
         """
         names = {
             prefix: await self._async_get_names(prefix)
-            for prefix in ("SourceName", "ZoneName", "MixName", "SceneName")
+            for prefix in ("SourceName", "ZoneName", "GroupName", "MixName", "SceneName")
         }
 
         # Older firmware that ignores request ids: fall back to 8 sources/zones
@@ -137,11 +138,19 @@ class AtlasAZMCoordinator(DataUpdateCoordinator):
                 }
                 for i, name in names["ZoneName"].items()
             ],
-            # Mixes can be picked as a zone source, using the mix index
+            # Mixes can also be picked as a zone source, using the mix index
             "mixes": [
-                {"index": i, "name": name, "name_param": f"MixName_{i}"}
+                {
+                    "index": i,
+                    "name": name,
+                    "name_param": f"MixName_{i}",
+                    "gain_param": f"MixGain_{i}",
+                    "mute_param": f"MixMute_{i}",
+                    "meter_param": f"MixMeter_{i}",
+                }
                 for i, name in names["MixName"].items()
             ],
+            "mix_sources": self._mix_sources(names["MixName"], names["SourceName"]),
             "scenes": [
                 {
                     "index": i,
@@ -151,14 +160,29 @@ class AtlasAZMCoordinator(DataUpdateCoordinator):
                 }
                 for i, name in names["SceneName"].items()
             ],
-            "groups": [],
+            "groups": [
+                {
+                    "index": i,
+                    "name": name,
+                    "name_param": f"GroupName_{i}",
+                    "gain_param": f"GroupGain_{i}",
+                    "mute_param": f"GroupMute_{i}",
+                    "source_param": f"GroupSource_{i}",
+                    "active_param": f"GroupActive_{i}",
+                    "meter_param": f"GroupMeter_{i}",
+                }
+                for i, name in names["GroupName"].items()
+                if name != UNUSED_GROUP_NAME
+            ],
         }
 
         _LOGGER.info(
-            "Discovered %d sources, %d zones, %d mixes and %d scenes",
+            "Discovered %d sources, %d zones, %d groups, %d mixes (%d mix inputs) and %d scenes",
             len(self.parameters["sources"]),
             len(self.parameters["zones"]),
+            len(self.parameters["groups"]),
             len(self.parameters["mixes"]),
+            len(self.parameters["mix_sources"]),
             len(self.parameters["scenes"]),
         )
 
@@ -173,6 +197,27 @@ class AtlasAZMCoordinator(DataUpdateCoordinator):
             for i, name in enumerate(results)
             if isinstance(name, str) and name
         }
+
+    @staticmethod
+    def _mix_sources(mixes: dict[int, str], sources: dict[int, str]) -> list[dict]:
+        """Return one config per source per mix.
+
+        Every source has Mix_N_SourceGain_S/Mix_N_SourceMute_S in every mix (sources
+        left out of a mix sit at -80 dB), so membership can't be discovered.
+        """
+        return [
+            {
+                "index": f"{m}_{s}",
+                "name": mix_name,
+                "default_name": f"Mix {m}",
+                "label": source_name or f"Source {s}",
+                "name_param": f"MixName_{m}",
+                "gain_param": f"Mix_{m}_SourceGain_{s}",
+                "mute_param": f"Mix_{m}_SourceMute_{s}",
+            }
+            for m, mix_name in mixes.items()
+            for s, source_name in sources.items()
+        ]
 
     async def _async_update_data(self):
         """Fetch data from API endpoint.
